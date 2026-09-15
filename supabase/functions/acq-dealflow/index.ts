@@ -133,14 +133,17 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === 'listings') {
-      const rows = await sql.unsafe(`select ${TEASER} from acq.deal_releases r where r.org_id='${orgId}' and r.status in ('released','under_offer','completed') and (r.status <> 'completed' or r.updated_at > now() - interval '30 days') order by r.released_at desc nulls last`);
+      // TEASER is a static column list; values go through $n parameters, never string interpolation
+      const rows = await sql.unsafe(`select ${TEASER} from acq.deal_releases r where r.org_id=$1 and r.status in ('released','under_offer','completed') and (r.status <> 'completed' or r.updated_at > now() - interval '30 days') order by r.released_at desc nulls last`, [orgId]);
       let states: Record<string, any> = {};
       if (member) for (const md of await sql`select release_id, state from acq.member_deals where member_id=${member.id}`) states[md.release_id] = md.state;
       return done({ listings: rows.map((r: any) => ({ ...r, access: accessState(r, member?.tier ?? null), my_state: states[r.id] ?? null })), tier: member?.tier ?? null, needs_upgrade: !!userId && !member && !isAdmin, plan: userOrg?.plan ?? null });
     }
 
     if (action === 'detail') {
-      const r = (await sql.unsafe(`select ${TEASER} from acq.deal_releases r where r.id='${String(body.release_id).replace(/[^0-9a-f-]/g, '')}' and r.org_id='${orgId}'`))[0];
+      const releaseId = String(body.release_id ?? '');
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(releaseId)) return done({ error: 'not found' }, 404);
+      const r = (await sql.unsafe(`select ${TEASER} from acq.deal_releases r where r.id=$1 and r.org_id=$2`, [releaseId, orgId]))[0];
       if (!r || r.status === 'draft') return done({ error: 'not found' }, 404);
       const active = await ndaActive(r.id);
       let md: any = null, qaPublished = 0;
