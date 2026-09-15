@@ -153,7 +153,17 @@ export default function AddDealModal({ onClose, onCreated }: { onClose: () => vo
               </div>
             )}
             {files.length > 0 && <div className="text-white/50 text-[12px] mt-3">{files.length} document{files.length > 1 ? 's' : ''} filed on the deal and readable by the analyst.</div>}
-            <button onClick={() => onCreated(result.submission_id)} className="w-full mt-4 inline-flex items-center justify-center gap-2 bg-[#FFD700] text-[#0A2540] px-4 py-2.5 rounded-full text-sm font-semibold hover:bg-opacity-90">Open the deal</button>
+            {result.submission_id ? (
+              <button onClick={() => onCreated(result.submission_id)} className="w-full mt-4 inline-flex items-center justify-center gap-2 bg-[#FFD700] text-[#0A2540] px-4 py-2.5 rounded-full text-sm font-semibold hover:bg-opacity-90">Open the deal</button>
+            ) : (
+              // Non-host workspaces get a lite deal (no submission row), so there is
+              // nothing to open on this board - say so instead of a silent no-op that
+              // tempts people to submit the same deal again.
+              <>
+                <p className="text-white/60 text-[12.5px] mt-4">Added to your pipeline. Open it from <b className="text-white/85">Your Deal Pipeline</b>.</p>
+                <button onClick={onClose} className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-[#FFD700] text-[#0A2540] px-4 py-2.5 rounded-full text-sm font-semibold hover:bg-opacity-90">Done</button>
+              </>
+            )}
           </>
         )}
       </div>
