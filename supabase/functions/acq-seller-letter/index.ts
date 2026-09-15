@@ -222,7 +222,9 @@ Deno.serve(async (req: Request) => {
       if (!m) return done({ error: 'forbidden' }, 403);
     }
 
-    const prefs = { enabled: true, eligible_only: true, auto: false, ...(org.settings?.outreach?.seller_letters ?? {}) };
+    // `since`: only sellers who arrived after the feature went live get a letter -
+    // older submissions were handled by hand and shouldn't flood the queue.
+    const prefs = { enabled: true, eligible_only: true, auto: false, since: '2026-09-15', ...(org.settings?.outreach?.seller_letters ?? {}) };
     if (!prefs.enabled && action === 'run') return done({ ok: true, skipped: 'seller letters disabled in settings' });
 
     let subs: any[];
@@ -234,6 +236,7 @@ Deno.serve(async (req: Request) => {
       subs = await sql`
         select * from public.submissions
         where created_at > now() - interval '30 days'
+          and created_at >= ${prefs.since}::timestamptz
           and consent = true
           and coalesce(heard_via, '') <> all(${INTERNAL_SOURCES})
           and status <> 'passed'
