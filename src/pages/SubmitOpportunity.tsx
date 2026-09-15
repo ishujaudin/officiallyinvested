@@ -657,6 +657,14 @@ export default function SubmitOpportunity() {
                   <TextInput value={form.companies_house_number} onChange={set('companies_house_number')} placeholder="e.g. 01234567" />
                 </Field>
               </div>
+              <div className="grid md:grid-cols-[2fr_1fr] gap-6">
+                <Field label="Postal address for correspondence" help="Optional — where we can write to you. If left blank we use the company's registered office.">
+                  <TextInput value={form.postal_address} onChange={set('postal_address')} placeholder="Street, town" />
+                </Field>
+                <Field label="Postcode">
+                  <TextInput value={form.postal_postcode} onChange={set('postal_postcode')} placeholder="e.g. NP18 1JF" />
+                </Field>
+              </div>
               <Field label="Are you selling 100% of the shares?" required error={errors.selling_100pct}>
                 <RadioPills
                   value={form.selling_100pct}

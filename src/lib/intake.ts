@@ -93,6 +93,8 @@ export interface IntakeForm {
   void_rate: string;
   outstanding_debt: string;
   ltv: string;
+  postal_address: string;   // optional - where the welcome letter should be posted
+  postal_postcode: string;
 
   // deal expectations (shared)
   asking_price: string;
@@ -119,6 +121,7 @@ export const EMPTY_FORM: IntakeForm = {
   is_spv: '', spv_name: '', selling_100pct: '', portfolio_value: '',
   property_type: '', num_units: '', locations: '', gross_rent: '',
   net_income: '', gross_yield: '', void_rate: '', outstanding_debt: '', ltv: '',
+  postal_address: '', postal_postcode: '',
   asking_price: '', day_one_cash_need: '', open_to_deferred: '',
   reason_for_sale: '', links: '', notes: '', consent: false, marketing_optin: false,
   network_optin: false,
@@ -196,6 +199,8 @@ export async function submitOpportunity(form: IntakeForm, files: File[]): Promis
     property_type: form.property_type,
     num_units: form.num_units,
     locations: form.locations.trim(),
+    postal_address: form.postal_address.trim(),
+    postal_postcode: form.postal_postcode.trim().toUpperCase(),
     gross_rent: String(parseAmount(form.gross_rent) ?? ''),
     net_income: String(parseAmount(form.net_income) ?? ''),
     gross_yield: form.gross_yield,
