@@ -238,7 +238,7 @@ Deno.serve(async (req: Request) => {
           and coalesce(heard_via, '') <> all(${INTERNAL_SOURCES})
           and status <> 'passed'
           ${prefs.eligible_only ? sql`and status <> 'ineligible'` : sql``}
-        order by created_at asc limit 50`;
+        order by created_at asc limit 10`;   // ~10s of Claude per letter; the cron runs every 30 min
     } else {
       return done({ error: 'unknown action' }, 400);
     }
