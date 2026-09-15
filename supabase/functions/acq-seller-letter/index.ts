@@ -95,6 +95,7 @@ async function draftLetter(cfg: any, org: any, s: any, company: string, sender: 
   const profile = org?.settings?.profile ?? null;
   const system =
     `You write a short personal welcome letter from ${sender} at ${org.name} to a business owner who has just submitted their business to us as a potential sale through our website. ` +
+    'This is a PRINTED LETTER delivered by post, not an email: never call it an email or mention replying to an email; invite them to call or write back, and note our contact details are printed at the foot of the page. ' +
     'Voice: warm, plain, human, confident, discreet. Short sentences. UK English. No hype, no jargon, no em-dashes, no markdown, no bullet points, no AI tells. ' +
     'Show you read what they sent by referring naturally to one or two specifics (their sector, region, how long they have been going, their reason for selling). ' +
     'Never print their financial figures back to them; say "the figures you shared". Never promise a price, a valuation or a timeline. ' +
@@ -162,7 +163,8 @@ async function processOne(sql: any, cfg: any, org: any, campaign: any, step: any
   //    uses for inbound seller enquiries and that the prospects check constraint allows)
   let p = (await sql`select * from acq.prospects where org_id=${orgId} and source->>'submission_id'=${s.id} limit 1`)[0];
   if (p) {
-    const t = (await sql`select id, status from acq.outreach_touches where prospect_id=${p.id} and campaign_id=${campaign.id} order by created_at desc limit 1`)[0];
+    // a cancelled letter doesn't count - cancelling in the queue and re-running is how you get a fresh draft
+    const t = (await sql`select id, status from acq.outreach_touches where prospect_id=${p.id} and campaign_id=${campaign.id} and status <> 'cancelled' order by created_at desc limit 1`)[0];
     if (t) return { submission_id: s.id, reference: ref, outcome: 'exists', touch_status: t.status };
   }
 
