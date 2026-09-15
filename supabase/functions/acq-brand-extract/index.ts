@@ -26,9 +26,50 @@ function pickColor(html: string): string | null {
 
 function abs(href: string, base: URL): string { try { return new URL(href, base).href; } catch { return href; } }
 
+// ---- SSRF guard: this function fetches user-supplied URLs server-side, so it
+// must never reach loopback, private, link-local or cloud-metadata addresses -
+// neither directly, via redirect, nor via a hostname that resolves there.
+const PRIVATE_HOST = /^(localhost|(.+\.)?(local|internal|localhost|home\.arpa))$/i;
+function isPrivateIp(host: string): boolean {
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]), b = Number(v4[2]);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  }
+  const h = host.replace(/^\[|\]$/g, '').toLowerCase();
+  if (h.includes(':')) return h === '::' || h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80') || h.startsWith('::ffff:');
+  return false;
+}
+function safeUrl(raw: string): URL | null {
+  let u: URL; try { u = new URL(raw); } catch { return null; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  if (u.username || u.password) return null;
+  if (PRIVATE_HOST.test(u.hostname) || isPrivateIp(u.hostname)) return null;
+  return u;
+}
+async function resolvesPrivate(host: string): Promise<boolean> {
+  if (isPrivateIp(host)) return true;
+  const lookups = await Promise.allSettled([Deno.resolveDns(host, 'A'), Deno.resolveDns(host, 'AAAA')]);
+  for (const l of lookups) if (l.status === 'fulfilled') for (const ip of l.value) if (isPrivateIp(ip)) return true;
+  return false;
+}
+/** fetch() that refuses non-public origins before and after redirects, with a timeout */
+async function fetchPublic(u: URL, ua: string): Promise<Response | null> {
+  if (await resolvesPrivate(u.hostname)) return null;
+  const r = await fetch(u.href, { headers: { 'User-Agent': ua }, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+  const final = safeUrl(r.url || u.href);
+  if (!final || await resolvesPrivate(final.hostname)) return null;
+  const len = Number(r.headers.get('content-length') || 0);
+  if (len > 5_000_000) return null;
+  return r;
+}
+
 async function toDataUrl(url: string): Promise<string | null> {
   try {
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const u = safeUrl(url);
+    if (!u) return null;
+    const r = await fetchPublic(u, 'Mozilla/5.0');
+    if (!r) return null;
     const ct = r.headers.get('content-type') || '';
     if (!/image\/(png|jpe?g|webp|svg)/i.test(ct)) return null;
     const buf = new Uint8Array(await r.arrayBuffer());
@@ -43,17 +84,20 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
     const body = await req.json().catch(() => ({} as any));
-    // light auth: signed-in user OR internal secret
-    if (!req.headers.get('x-acq-secret')) {
-      const sb = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
-      const { data } = await sb.auth.getUser();
-      if (!data?.user) return json({ error: 'unauthorised' }, 401);
-    }
+    // auth: a signed-in user is always required. (The previous "internal secret"
+    // shortcut only checked that the header was PRESENT, never its value, and no
+    // server-side caller uses this function - so it was an open bypass.)
+    const sb = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
+    const { data } = await sb.auth.getUser();
+    if (!data?.user) return json({ error: 'unauthorised' }, 401);
+
     let raw = String(body.url || '').trim();
     if (!raw) return json({ error: 'url required' }, 400);
     if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
-    const base = new URL(raw);
-    const res = await fetch(base.href, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; OfficiallyInvestedBot/1.0)' } });
+    const base = safeUrl(raw);
+    if (!base) return json({ error: 'url must be a public http(s) website address' }, 400);
+    const res = await fetchPublic(base, 'Mozilla/5.0 (compatible; OfficiallyInvestedBot/1.0)');
+    if (!res) return json({ error: 'that address is not a public website' }, 400);
     if (!res.ok) return json({ error: 'could not fetch site (' + res.status + ')' }, 502);
     const html = (await res.text()).slice(0, 600_000);
 
