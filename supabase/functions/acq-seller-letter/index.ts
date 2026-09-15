@@ -157,8 +157,10 @@ async function processOne(sql: any, cfg: any, org: any, campaign: any, step: any
   const ref = s.reference ?? s.id;
   const company = s.business_name || s.spv_name || s.firm_name || `${s.submitter_name}'s business`;
 
-  // 1) already has a prospect + letter?
-  let p = (await sql`select * from acq.prospects where org_id=${orgId} and provenance='inbound_seller' and source->>'submission_id'=${s.id} limit 1`)[0];
+  // 1) already has a prospect + letter? (matched on the submission id we stamp
+  //    into source; provenance stays 'funnel' - the value the platform already
+  //    uses for inbound seller enquiries and that the prospects check constraint allows)
+  let p = (await sql`select * from acq.prospects where org_id=${orgId} and source->>'submission_id'=${s.id} limit 1`)[0];
   if (p) {
     const t = (await sql`select id, status from acq.outreach_touches where prospect_id=${p.id} and campaign_id=${campaign.id} order by created_at desc limit 1`)[0];
     if (t) return { submission_id: s.id, reference: ref, outcome: 'exists', touch_status: t.status };
@@ -177,7 +179,7 @@ async function processOne(sql: any, cfg: any, org: any, campaign: any, step: any
   if (!p) {
     p = (await sql`insert into acq.prospects (org_id, company_name, company_number, owner_name, owner_email, owner_phone, region, address, postcode, provenance, exportable, source, stage, notes)
       values (${orgId}, ${addr.company ?? company}, ${s.companies_house_number ?? null}, ${s.owner_name || s.submitter_name}, ${s.email ?? null}, ${s.phone ?? null}, ${s.region ?? s.locations ?? null},
-              ${addr.address}, ${addr.postcode}, 'inbound_seller', false, ${{ kind: 'submission', submission_id: s.id, reference: ref }}, 'qualified',
+              ${addr.address}, ${addr.postcode}, 'funnel', false, ${{ kind: 'submission', submission_id: s.id, reference: ref }}, 'qualified',
               ${'Inbound seller submission ' + ref + (s.reason_for_sale ? '. Reason for sale: ' + String(s.reason_for_sale).slice(0, 300) : '')}) returning *`)[0];
   } else if (!p.address || !p.postcode) {
     await sql`update acq.prospects set address=${addr.address}, postcode=${addr.postcode}, updated_at=now() where id=${p.id}`;
