@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { STAGES, CHECKLISTS, ITEM_KINDS, TERMINAL_STAGES, PARALLEL_STAGES, STAGE_ASSISTS, gbp } from '../../lib/stages';
+import { useKanbanDrag, columnClass } from '../../components/kanban/useKanbanDrag';
+import StageMoveSelect from '../../components/kanban/StageMoveSelect';
 import DealAnalysisPanel from '../../components/DealAnalysisPanel';
 import { getVerdicts } from '../../lib/acq';
 import AddDealModal from '../../components/AddDealModal';
@@ -243,6 +245,7 @@ export default function Pipeline() {
     await ensureChecklist(deal, stage);
     load();
   };
+  const dnd = useKanbanDrag(moveDeal);
 
   const open = openId ? deals.find((d) => d.id === openId) ?? null : null;
   useEffect(() => {
@@ -443,16 +446,16 @@ export default function Pipeline() {
         ) : loadErr ? (
           <p className="text-red-300 p-8">{loadErr}</p>
         ) : view === 'kanban' ? (
-          <div className="overflow-x-auto pb-3">
-            <div className="flex gap-2.5 items-start min-w-max">
+          <div className="overflow-x-auto pb-3" {...dnd.containerProps}>
+            {/* items-stretch + min height: every column is a full-height drop target, not just its cards */}
+            <div className="flex gap-2.5 items-stretch min-w-max min-h-[60vh]">
               {STAGES.map((s) => {
                 const inStage = filteredDeals.filter((d) => d.status === s.key);
                 return (
                   <div
                     key={s.key}
-                    className="bg-white/[0.04] border border-white/10 rounded-xl p-2.5 w-[210px] shrink-0 min-h-[120px]"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); moveDeal(e.dataTransfer.getData('text/plain'), s.key); }}
+                    className={columnClass('bg-white/[0.04] border border-white/10 rounded-xl p-2.5 w-[210px] shrink-0 flex flex-col transition-colors', s.key, dnd.overStage, !!dnd.draggingId)}
+                    {...dnd.columnProps(s.key)}
                   >
                     <div className="text-[#FFD700]/70 text-[9px] font-bold uppercase tracking-wider mb-1 px-1">{s.group}</div>
                     <div className="flex justify-between text-white/70 text-[11px] font-bold uppercase tracking-wide px-1 pb-2">
@@ -465,10 +468,9 @@ export default function Pipeline() {
                       return (
                         <div
                           key={d.id}
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', d.id)}
-                          onClick={() => setOpenId(d.id)}
-                          className="bg-[#0E3257] border border-white/15 hover:border-[#FFD700]/50 rounded-xl p-2.5 mb-2 cursor-pointer"
+                          {...dnd.cardProps(d.id)}
+                          onClick={() => { if (!dnd.clickWasDrag()) setOpenId(d.id); }}
+                          className={'bg-[#0E3257] border border-white/15 hover:border-[#FFD700]/50 rounded-xl p-2.5 mb-2 cursor-grab active:cursor-grabbing' + (dnd.draggingId === d.id ? ' opacity-40' : '')}
                         >
                           {b && <div className={'text-[10px] font-bold rounded-lg px-2 py-1 mb-1.5 ' + BALL_STYLES[b.cls]}>{b.label}</div>}
                           <div className="flex justify-between items-center mb-1">
@@ -492,6 +494,7 @@ export default function Pipeline() {
                             {relMap[d.id] && <span className="bg-emerald-400/25 text-emerald-200 px-1.5 py-0.5 rounded-full">◆ {relMap[d.id].status === 'released' ? 'live to members' : relMap[d.id].status.replace('_', ' ')}</span>}
                             {d.member_listed && !relMap[d.id] && <span className="bg-[#FFD700]/20 text-[#FFD700] px-1.5 py-0.5 rounded-full">★ members</span>}
                           </div>
+                          <StageMoveSelect current={d.status} stages={STAGES} onMove={(stage) => moveDeal(d.id, stage)} />
                         </div>
                       );
                     })}

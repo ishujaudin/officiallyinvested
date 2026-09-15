@@ -12,6 +12,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, X, Sparkles, Lock, Check, LogOut, RefreshCw, LayoutGrid, Table as TableIcon, Paperclip, Plus } from 'lucide-react';
 import { liteDeals, liteDealCreate, liteDealUpdate, onboardScore, onboardStatus, crmList, crmAddTask, crmUpdateTask, crmDeleteTask, dealIntake, extractFile } from '../../lib/acq';
 import { STAGES, TERMINAL_STAGES, CHECKLISTS, STAGE_ASSISTS, ITEM_KINDS, gbp } from '../../lib/stages';
+import { useKanbanDrag, columnClass } from '../../components/kanban/useKanbanDrag';
+import StageMoveSelect from '../../components/kanban/StageMoveSelect';
 import Paywall, { CreditsTopUp } from '../../components/Paywall';
 import { supabase } from '../../lib/supabase';
 import DealAnalysisPanel from '../../components/DealAnalysisPanel';
@@ -70,7 +72,23 @@ export default function PipelineLite() {
     ['Completed', (deals ?? []).filter((d) => d.status === 'completed').length],
   ];
 
-  const moveDeal = async (id: string, status: string) => { if (!id) return; await liteDealUpdate(id, { status }).catch((x: any) => setErr(x.message)); load(); };
+  const moveDeal = async (id: string, status: string) => {
+    if (!id) return;
+    const deal = deals?.find((d) => d.id === id);
+    if (!deal || deal.status === status) return;
+    const prev = deal.status;
+    // optimistic: move the card immediately, roll back if the save fails
+    setDeals((ds) => ds?.map((d) => (d.id === id ? { ...d, status } : d)) ?? ds);
+    try {
+      await liteDealUpdate(id, { status });
+    } catch (x: any) {
+      setDeals((ds) => ds?.map((d) => (d.id === id ? { ...d, status: prev } : d)) ?? ds);
+      setErr('Could not move the deal: ' + (x?.message || String(x)));
+      return;
+    }
+    load();
+  };
+  const dnd = useKanbanDrag(moveDeal);
 
   return (
     <div className="min-h-screen" style={{ background: NAVY }}>
@@ -121,16 +139,16 @@ export default function PipelineLite() {
         {!deals ? (
           <div className="p-16 text-center"><Loader2 className="h-7 w-7 animate-spin text-[#FFD700] mx-auto" /></div>
         ) : view === 'kanban' ? (
-          <div className="overflow-x-auto pb-3">
-            <div className="flex gap-2.5 items-start min-w-max">
+          <div className="overflow-x-auto pb-3" {...dnd.containerProps}>
+            {/* items-stretch + min height: every column is a full-height drop target, not just its cards */}
+            <div className="flex gap-2.5 items-stretch min-w-max min-h-[60vh]">
               {BOARD_STAGES.map((s) => {
                 const inStage = filtered.filter((d) => d.status === s.key);
                 return (
                   <div
                     key={s.key}
-                    className="bg-white/[0.04] border border-white/10 rounded-xl p-2.5 w-[210px] shrink-0 min-h-[120px]"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); moveDeal(e.dataTransfer.getData('text/plain'), s.key); }}
+                    className={columnClass('bg-white/[0.04] border border-white/10 rounded-xl p-2.5 w-[210px] shrink-0 flex flex-col transition-colors', s.key, dnd.overStage, !!dnd.draggingId)}
+                    {...dnd.columnProps(s.key)}
                   >
                     <div className="text-[#FFD700]/70 text-[9px] font-bold uppercase tracking-wider mb-1 px-1">{s.group}</div>
                     <div className="flex justify-between text-white/70 text-[11px] font-bold uppercase tracking-wide px-1 pb-2">
@@ -144,10 +162,9 @@ export default function PipelineLite() {
                       return (
                         <div
                           key={d.id}
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', d.id)}
-                          onClick={() => setOpenId(d.id)}
-                          className="bg-[#0E3257] border border-white/15 hover:border-[#FFD700]/50 rounded-xl p-2.5 mb-2 cursor-pointer"
+                          {...dnd.cardProps(d.id)}
+                          onClick={() => { if (!dnd.clickWasDrag()) setOpenId(d.id); }}
+                          className={'bg-[#0E3257] border border-white/15 hover:border-[#FFD700]/50 rounded-xl p-2.5 mb-2 cursor-grab active:cursor-grabbing' + (dnd.draggingId === d.id ? ' opacity-40' : '')}
                         >
                           {stale > 7 && <div className="text-[10px] font-bold rounded-lg px-2 py-1 mb-1.5 bg-amber-400/20 text-amber-300 border border-amber-400/30">With you · {stale}d - nudge it</div>}
                           <div className="flex justify-between items-center mb-1">
@@ -166,6 +183,7 @@ export default function PipelineLite() {
                             {d.source === 'intake' && d.ch_snapshot?.intake && <span className="bg-blue-500/25 text-blue-200 px-1.5 py-0.5 rounded-full">✦ researched</span>}
                             {score == null && <span className="bg-white/10 text-white/50 px-1.5 py-0.5 rounded-full">not scored</span>}
                           </div>
+                          <StageMoveSelect current={d.status} stages={STAGES} onMove={(stage) => moveDeal(d.id, stage)} />
                         </div>
                       );
                     })}
