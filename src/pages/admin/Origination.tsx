@@ -1615,7 +1615,6 @@ function BillingView({ settings, onSaved, setErr }: { settings: any; onSaved: ()
   const [showTopup, setShowTopup] = useState(false);
   const [bal, setBal] = useState<any>(null);
   useEffect(() => { creditsBalance().then(setBal).catch(() => {}); }, []);
-  const credits = settings?.usage?.letter_credits ?? 0;
   const plan = settings?.plan ?? 'free';
   const managePortal = async () => {
     try { const r = await billingPortal(); if (r.url) window.location.href = r.url; else setErr(r.error ?? 'No subscription found'); }
@@ -1667,7 +1666,7 @@ function BillingView({ settings, onSaved, setErr }: { settings: any; onSaved: ()
       </div>
       {showTopup && <CreditsTopUp onClose={() => { setShowTopup(false); creditsBalance().then(setBal).catch(() => {}); }} />}
       <Header title="Usage & billing" sub="Control how much the machine does each month. Letters are your only cold-outreach cost - email and phone are free and unlock once a prospect engages." />
-      <div className="px-8 pb-8 grid lg:grid-cols-2 gap-5 max-w-3xl">
+      <div className="px-8 pb-8 max-w-xl">
         <div className={card + ' p-5'}>
           <div className="font-semibold text-gray-900 mb-1">Letter volume</div>
           <p className="text-[13px] text-gray-500 mb-3">How many letters may be posted per month, across all campaigns. From £1.20 per letter, printed and posted for you.</p>
@@ -1678,20 +1677,6 @@ function BillingView({ settings, onSaved, setErr }: { settings: any; onSaved: ()
             <button onClick={save} disabled={busy} className={btnGold}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}Save</button>
           </div>
           <p className="text-[11px] text-gray-400 mt-3">Approximate monthly letter spend at this volume: £{(Number(vol) * 1.2).toLocaleString()}.</p>
-        </div>
-        <div className={card + ' p-5'}>
-          <div className="font-semibold text-gray-900 mb-1">Letter credits</div>
-          <div className="text-[28px] font-bold text-gray-900 my-2">{credits.toLocaleString()} <span className="text-[13px] font-normal text-gray-400">credits</span></div>
-          <p className="text-[13px] text-gray-500 mb-3">One credit = one posted letter. Top-ups roll over month to month.</p>
-          <a className={btnPrimary} href="mailto:deals@officiallyinvested.com?subject=Letter%20credits%20top-up">Top up credits</a>
-        </div>
-        <div className={card + ' p-5 lg:col-span-2'}>
-          <div className="font-semibold text-gray-900 mb-1">Plan & billing</div>
-          <p className="text-[13px] text-gray-500 mb-3">Change your plan, payment method and invoices. Self-serve billing arrives with the Stripe launch - until then we handle changes same-day by email.</p>
-          <div className="flex gap-2">
-            <a className={btnGhost} href="mailto:deals@officiallyinvested.com?subject=Billing%20change">Change plan / billing</a>
-            <span className="text-[11px] text-gray-400 self-center">Stripe self-serve portal - coming soon</span>
-          </div>
         </div>
       </div>
     </>
