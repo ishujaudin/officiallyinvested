@@ -37,7 +37,7 @@ const INTERNAL_SOURCES = ['origination', 'drive'];
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-acq-secret', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
 const clean = (s: string) => s.replace(/—/g, ', ').replace(/\*\*|##+|```/g, '').trim();
-const firstName = (full: string | null | undefined) => (String(full ?? '').trim().split(/\s+/)[0] || 'there');
+const firstName = (full: string | null | undefined) => (String(full ?? '').trim().split(/\s+/)[0] || 'Sir or Madam');
 
 // ---- address ----------------------------------------------------------------
 
@@ -162,6 +162,13 @@ async function processOne(sql: any, cfg: any, org: any, campaign: any, step: any
   //    into source; provenance stays 'funnel' - the value the platform already
   //    uses for inbound seller enquiries and that the prospects check constraint allows)
   let p = (await sql`select * from acq.prospects where org_id=${orgId} and source->>'submission_id'=${s.id} limit 1`)[0];
+  // A seller who comes in through the form may already be on the prospect list
+  // from sourcing (company_number is unique per org) - reuse that row and stamp
+  // the submission onto it instead of tripping the unique constraint.
+  if (!p && s.companies_house_number) {
+    p = (await sql`select * from acq.prospects where org_id=${orgId} and company_number=${s.companies_house_number} order by created_at limit 1`)[0];
+    if (p) await sql`update acq.prospects set source = coalesce(source, '{}'::jsonb) || ${JSON.stringify({ submission_id: s.id, reference: ref })}::jsonb, updated_at=now() where id=${p.id}`;
+  }
   if (p) {
     // a cancelled letter doesn't count - cancelling in the queue and re-running is how you get a fresh draft
     const t = (await sql`select id, status from acq.outreach_touches where prospect_id=${p.id} and campaign_id=${campaign.id} and status <> 'cancelled' order by created_at desc limit 1`)[0];
@@ -183,7 +190,8 @@ async function processOne(sql: any, cfg: any, org: any, campaign: any, step: any
       values (${orgId}, ${addr.company ?? company}, ${s.companies_house_number ?? null}, ${s.owner_name || s.submitter_name}, ${s.email ?? null}, ${s.phone ?? null}, ${s.region ?? s.locations ?? null},
               ${addr.address}, ${addr.postcode}, 'funnel', false, ${{ kind: 'submission', submission_id: s.id, reference: ref }}, 'qualified',
               ${'Inbound seller submission ' + ref + (s.reason_for_sale ? '. Reason for sale: ' + String(s.reason_for_sale).slice(0, 300) : '')}) returning *`)[0];
-  } else if (!p.address || !p.postcode) {
+  } else if (formAddress(s) || !p.address || !p.postcode) {
+    // the seller's own correspondence address beats whatever sourcing had
     await sql`update acq.prospects set address=${addr.address}, postcode=${addr.postcode}, updated_at=now() where id=${p.id}`;
   }
 
